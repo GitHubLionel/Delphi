@@ -1,0 +1,266 @@
+unit Solver;
+
+interface
+
+uses
+  Windows, Classes, System.Types, System.Generics.Collections;
+
+type
+  TBoard = array [1 .. 9] of array [1 .. 9] of Byte;
+  TPointList = TList<TPoint>;
+  TAllowedDigits = set of 1 .. 9;
+
+  TSudokuSolver = class
+  private
+    FSolution: string;
+    function ReadBoard(aBoard: string): TBoard;
+    procedure WriteBoard(board: TBoard);
+
+    function GetValidDigits(board: TBoard; x, y: Integer): TAllowedDigits;
+    function GetDigitsInRow(board: TBoard; row: Integer): TAllowedDigits;
+    function GetDigitsInColumn(board: TBoard; col: Integer): TAllowedDigits;
+
+    function GetDigitsInBlock(board: TBoard; block: Integer): TAllowedDigits;
+    function GetBlockCoords(block: Integer): TPointList;
+    function GetBlock(x, y: Integer): Integer;
+
+    function GetFreePositions(board: TBoard): TPointList;
+    function SolveBacktrack(board: TBoard; freePositions: TPointList): boolean;
+
+    function heuristic(board: TBoard; freePositions: TPointList): TPoint;
+    function GetSolution: string;
+
+  public
+    function Solve(aBoard: string): boolean;
+    property Solution: string read GetSolution;
+  end;
+
+implementation
+
+uses SysUtils;
+
+function TSudokuSolver.GetSolution: string;
+begin
+  result := FSolution;
+end;
+
+function TSudokuSolver.Solve(aBoard: string): boolean;
+var
+  board: TBoard;
+  freePositions: TPointList;
+begin
+  FSolution := '';
+
+  // First solution
+  board := ReadBoard(aBoard);
+
+  // start solving
+  freePositions := GetFreePositions(board);
+  result := SolveBacktrack(board, freePositions);
+end;
+
+function TSudokuSolver.GetBlock(x, y: Integer): Integer;
+begin
+  // Compute in which block the given coords lie
+  // Index: 1
+  result := 3 * ((x - 1) div 3) + ((y - 1) div 3) + 1;
+end;
+
+function TSudokuSolver.GetBlockCoords(block: Integer): TPointList;
+var
+  startRow, startCol: Integer;
+  x, y: Integer;
+begin
+  result := TPointList.Create;
+
+  startRow := 3 * ((block - 1) div 3) + 1;
+  startCol := 3 * ((block - 1) mod 3) + 1;
+
+  for x := startRow to startRow + 2 do
+    for y := startCol to startCol + 2 do
+      result.Add(Point(x, y));
+end;
+
+function TSudokuSolver.GetDigitsInBlock(board: TBoard; block: Integer): TAllowedDigits;
+var
+  points: TPointList;
+  Point: TPoint;
+begin
+  result := [];
+  points := GetBlockCoords(block);
+
+  for Point in points do
+  begin
+    if board[Point.x][Point.y] <> 0 then
+    begin
+      result := result + [board[Point.x][Point.y]];
+    end;
+  end;
+
+  points.Free;
+end;
+
+function TSudokuSolver.GetDigitsInColumn(board: TBoard; col: Integer): TAllowedDigits;
+var
+  i: Integer;
+begin
+  result := [];
+  for i := 1 to 9 do
+  begin
+    if board[i][col] <> 0 then
+    begin
+      result := result + [board[i][col]];
+    end;
+  end;
+end;
+
+function TSudokuSolver.GetDigitsInRow(board: TBoard; row: Integer): TAllowedDigits;
+var
+  i: Integer;
+begin
+  result := [];
+  for i := 1 to 9 do
+  begin
+    if board[row][i] <> 0 then
+    begin
+      result := result + [board[row][i]];
+    end;
+  end;
+end;
+
+function TSudokuSolver.GetFreePositions(board: TBoard): TPointList;
+var
+  x, y: Integer;
+begin
+  result := TPointList.Create;
+
+  for x := 1 to 9 do
+    for y := 1 to 9 do
+      if board[x][y] = 0 then
+        result.Add(Point(x, y));
+end;
+
+function TSudokuSolver.GetValidDigits(board: TBoard; x, y: Integer): TAllowedDigits;
+const
+  all = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+var
+  row, col, block: TAllowedDigits;
+  blockNumber: Integer;
+begin
+  row := GetDigitsInRow(board, x);
+  col := GetDigitsInColumn(board, y);
+
+  blockNumber := GetBlock(x, y);
+  block := GetDigitsInBlock(board, blockNumber);
+
+  result := all - (block + row + col);
+end;
+
+function TSudokuSolver.heuristic(board: TBoard; freePositions: TPointList): TPoint;
+var
+  bestResult: Integer;
+  item: TPoint;
+  validDigits: TAllowedDigits;
+  count: Integer;
+
+  function countValidDigits: Integer;
+  var
+    i: Integer;
+  begin
+    result := 0;
+    for i := 1 to 9 do
+    begin
+      if i in validDigits then
+        inc(result);
+    end;
+  end;
+
+begin
+  result := Point(0, 0);
+  bestResult := 10; // Unreachable bad
+
+  for item in freePositions do
+  begin
+    validDigits := GetValidDigits(board, item.x, item.y);
+    count := countValidDigits;
+
+    if count < bestResult then
+    begin
+      bestResult := count;
+      result := item;
+
+      if count = 1 then
+        Exit;
+    end;
+  end;
+end;
+
+function TSudokuSolver.SolveBacktrack(board: TBoard; freePositions: TPointList): boolean;
+var
+  item: TPoint;
+  digits: TAllowedDigits;
+  digit: Integer;
+begin
+  if freePositions.count = 0 then
+  begin
+    WriteBoard(board);
+    result := true;
+  end
+  else
+  begin
+    // There are free spaces
+    result := false;
+
+    // Get one and try to solve
+    item := heuristic(board, freePositions);
+    freePositions.Remove(item);
+
+    {
+      // Use this if you do not want to use the heuristic
+      item := freePositions[0];
+      freePositions.Delete(0);
+    }
+
+    digits := GetValidDigits(board, item.x, item.y);
+    for digit := 1 to 9 do
+    begin
+      if digit in digits then
+      begin
+        board[item.x, item.y] := digit;
+
+        result := SolveBacktrack(board, freePositions);
+        if result then
+          Exit;
+
+        board[item.x, item.y] := 0;
+      end;
+    end;
+
+    freePositions.Add(item);
+  end;
+end;
+
+function TSudokuSolver.ReadBoard(aBoard: string): TBoard;
+var
+  i, j: Integer;
+begin
+  for i := 1 to 9 do
+    for j := 1 to 9 do
+    begin
+      result[i][j] := StrToInt(aBoard[(i - 1) * 9 + (j - 1) + 1]);
+    end;
+end;
+
+procedure TSudokuSolver.WriteBoard(board: TBoard);
+var
+  i, j: Integer;
+begin
+  FSolution := '';
+  for i := 1 to 9 do
+    for j := 1 to 9 do
+    begin
+      FSolution := FSolution + IntToStr(board[i][j]);
+    end;
+end;
+
+end.
