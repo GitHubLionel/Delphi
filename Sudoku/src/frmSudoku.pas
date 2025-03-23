@@ -73,6 +73,7 @@ type
     procedure CreateGrid(aMissing: Integer);
     procedure CheckWin;
     procedure UpdateButton;
+    procedure UpdateButtonDigit;
     { Private declarations }
   public
     { Public declarations }
@@ -101,6 +102,7 @@ begin
   FFile := TStringList.Create;
   FCol := 0;
   FRow := 0;
+  Randomize;
 end;
 
 procedure TFormMain.FormDestroy(Sender: TObject);
@@ -128,6 +130,19 @@ begin
     ShowMessage('Tu as gagné !');
     UpdateButton();
   end;
+end;
+
+procedure TFormMain.Timer1Timer(Sender: TObject);
+var
+  sec, min: Integer;
+begin
+  Inc(ElapsedTime);
+  min := ElapsedTime div 60;
+  sec := ElapsedTime mod 60;
+  if min = 0 then
+    lTime.Caption := Format('Temps : %d s', [sec])
+  else
+    lTime.Caption := Format('Temps : %d min %d s', [min, sec]);
 end;
 
 procedure TFormMain.bClearClick(Sender: TObject);
@@ -173,19 +188,6 @@ begin
       end;
     end;
   CheckWin();
-end;
-
-procedure TFormMain.Timer1Timer(Sender: TObject);
-var
-  sec, min: Integer;
-begin
-  Inc(ElapsedTime);
-  min := ElapsedTime div 60;
-  sec := ElapsedTime mod 60;
-  if min = 0 then
-    lTime.Caption := Format('Temps : %d s', [sec])
-  else
-    lTime.Caption := Format('Temps : %d min %d s', [min, sec]);
 end;
 
 function TFormMain.GridToString(aLine: Boolean): string;
@@ -270,8 +272,47 @@ begin
   UpdateButton();
 end;
 
-procedure TFormMain.gridSudokuSelectCell(Sender: TObject; ACol, ARow: Integer;
-  var CanSelect: Boolean);
+procedure TFormMain.btnNumberClick(Sender: TObject);
+var
+  n: char;
+begin
+  if (not(Sender as TButton).Enabled) then
+  begin
+    Beep;
+    Exit;
+  end;
+
+  n := char(48 + (Sender as TButton).Tag);
+  UserDigit[FCol, FRow] := n;
+  FCurrentDigit := n;
+  gridSudoku.Cells[FCol, FRow] := n;
+  if Jeu then
+  begin
+    Inc(Placed);
+    CheckWin();
+  end;
+  gridSudoku.Repaint;
+  (Sender as TButton).Enabled := False;
+end;
+
+procedure TFormMain.bDelNumberClick(Sender: TObject);
+var
+  canDelete: Boolean;
+begin
+  canDelete := True;
+  if (Jeu and (InitialDigit[FCol, FRow] = 'x')) then
+    canDelete := False;
+  if canDelete then
+  begin
+    gridSudoku.Cells[FCol, FRow] := '';
+    UserDigit[FCol, FRow] := #0;
+    UpdateButtonDigit();
+    if Jeu then
+      Dec(Placed);
+  end;
+end;
+
+procedure TFormMain.UpdateButtonDigit();
 
   procedure CheckAlign(aVal: Integer; var min, max: Integer);
   begin
@@ -297,75 +338,31 @@ var
   imin, imax, jmin, jmax: Integer;
   cDigit: string;
 begin
-  FCol := ACol;
-  FRow := ARow;
-  FCurrentDigit := gridSudoku.Cells[ACol, ARow];
-  gridSudoku.Repaint;
-
-  // Can not change if we play a game
-  if (Jeu and (InitialDigit[ACol, ARow] = 'x')) then
-  begin
-    for i := 1 to 9 do
-      FButton[i].Enabled := False;
-    bDelNumber.Enabled := False;
-    Exit;
-  end;
-
-  // Check butttons allowed
+  // Check buttons allowed
   for i := 1 to 9 do
     FButton[i].Enabled := True;
   bDelNumber.Enabled := True;
 
-  for i := 0 to 8 do
-    for j := 1 to 9 do
+  for i := 0 to 8 do // loop row, col
+    for j := 1 to 9 do // loop digit
     begin
       cDigit := IntToStr(j);
       with gridSudoku do
       begin
-        if (Cells[ACol, i] = cDigit) or (Cells[i, ARow] = cDigit) then
+        if (Cells[FCol, i] = cDigit) or (Cells[i, FRow] = cDigit) then
           FButton[j].Enabled := False;
       end;
     end;
 
-  CheckAlign(ARow, imin, imax);
-  CheckAlign(ACol, jmin, jmax);
+  // square
+  CheckAlign(FRow, imin, imax);
+  CheckAlign(FCol, jmin, jmax);
   for i := imin to imax do
     for j := jmin to jmax do
     begin
       if gridSudoku.Cells[j, i] <> '' then
         FButton[StrToInt(gridSudoku.Cells[j, i].Chars[0])].Enabled := False;
     end;
-end;
-
-procedure TFormMain.btnNumberClick(Sender: TObject);
-var
-  n: char;
-begin
-  if (not (Sender as TButton).Enabled) then
-  begin
-    Beep;
-    Exit;
-  end;
-
-  n := char(48 + (Sender as TButton).Tag);
-  UserDigit[FCol, FRow] := n;
-  FCurrentDigit := n;
-  gridSudoku.Cells[FCol, FRow] := n;
-  if Jeu then
-  begin
-    Inc(Placed);
-    CheckWin();
-  end;
-  gridSudoku.Repaint;
-  (Sender as TButton).Enabled := False;
-end;
-
-procedure TFormMain.bDelNumberClick(Sender: TObject);
-begin
-  gridSudoku.Cells[gridSudoku.Col, gridSudoku.Row] := '';
-  UserDigit[gridSudoku.Col, gridSudoku.Row] := #0;
-  if Jeu then
-    Dec(Placed);
 end;
 
 procedure TFormMain.CreateGrid(aMissing: Integer);
@@ -378,6 +375,7 @@ begin
   for i := 1 to 81 do
     str := str + '0';
 
+  // fill one cell with one digit randomly
   p := random(81) + 1;
   str[p] := char(48 + random(9) + 1);
 
@@ -394,6 +392,28 @@ begin
   until (i = aMissing);
 
   StringToGrid(str);
+end;
+
+procedure TFormMain.gridSudokuSelectCell(Sender: TObject; ACol, ARow: Integer;
+  var CanSelect: Boolean);
+var
+  i: Integer;
+begin
+  FCol := ACol;
+  FRow := ARow;
+  FCurrentDigit := gridSudoku.Cells[ACol, ARow];
+  gridSudoku.Repaint;
+
+  // Can not change if we play a game
+  if (Jeu and (InitialDigit[ACol, ARow] = 'x')) then
+  begin
+    for i := 1 to 9 do
+      FButton[i].Enabled := False;
+    bDelNumber.Enabled := False;
+    Exit;
+  end;
+
+  UpdateButtonDigit();
 end;
 
 procedure TFormMain.gridSudokuDrawCell(Sender: TObject; ACol, ARow: Integer; Rect: TRect;
@@ -439,8 +459,7 @@ begin
   end;
   if CharInSet(char(Key), ['1' .. '9']) then
     btnNumberClick(FButton[Key - 48])
-  else
-  if (Key in [VK_Numpad1 .. VK_Numpad9]) then
+  else if (Key in [VK_Numpad1 .. VK_Numpad9]) then
   begin
     btnNumberClick(FButton[Key - VK_Numpad1 + 1]);
   end;

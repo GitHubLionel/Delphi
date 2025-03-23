@@ -3,7 +3,7 @@
         <ProjectGuid>{47C00625-6859-4052-9C48-814D70FCCC84}</ProjectGuid>
         <MainSource>Sudoku.dpr</MainSource>
         <Base>True</Base>
-        <Config Condition="'$(Config)'==''">Debug</Config>
+        <Config Condition="'$(Config)'==''">Release</Config>
         <TargetedPlatforms>1</TargetedPlatforms>
         <AppType>Application</AppType>
         <FrameworkType>VCL</FrameworkType>
